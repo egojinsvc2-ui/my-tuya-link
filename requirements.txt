@@ -1,5 +1,5 @@
 flask
-tuya-iot-py-sdk
+tinytuya
 gspread
 oauth2client
 pytz
