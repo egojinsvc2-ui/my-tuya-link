@@ -46,7 +46,7 @@ def log_to_sheet(result, details):
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def main_handler():
+def main_handler(path):
     """링크가 클릭되면 실행되는 메인 함수"""
     if not all([ACCESS_ID, ACCESS_KEY, API_ENDPOINT, DEVICE_ID]):
         msg = "서버 설정 오류: Tuya API 정보가 설정되지 않았습니다."
