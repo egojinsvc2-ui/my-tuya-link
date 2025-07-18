@@ -70,9 +70,9 @@ def main_handler(path):
         }
         
         # TinyTuya는 이 함수 하나로 명령을 보냅니다.
-        result = cloud.send_device_commands(DEVICE_ID, commands['commands'])
+        result = cloud.device_control(DEVICE_ID, action="command", payload=commands)
 
-        if result.get('success', False):
+        if result and not result.get('Error'):
             msg = f"기기(ID: {DEVICE_ID})에 '켜기' 명령 전송"
             log_to_sheet("성공", result)
             return f"<h1>요청 성공</h1><p>{msg}</p><p>응답: {result}</p>"
