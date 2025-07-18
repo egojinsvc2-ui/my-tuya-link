@@ -1,30 +1,31 @@
 # -*- coding: utf-8 -*-
 import os
 import json
+import tinytuya
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from flask import Flask
-from tuya_iot import TuyaOpenAPI
 from datetime import datetime
 import pytz
 
 app = Flask(__name__)
 
-# --- 이 정보들은 Vercel에 '환경 변수'로 안전하게 저장할 예정입니다. ---
+# --- 환경 변수 ---
 ACCESS_ID = os.environ.get("TUYA_ACCESS_ID")
 ACCESS_KEY = os.environ.get("TUYA_ACCESS_KEY")
-API_ENDPOINT = os.environ.get("TUYA_API_ENDPOINT")
+# tinytuya는 API_ENDPOINT 대신 REGION을 사용합니다.
+# REGION 값: 'us' (미국), 'eu' (유럽), 'in' (인도), 'cn' (중국)
+REGION = os.environ.get("TUYA_REGION", "us") # 기본값 미국
 DEVICE_ID = os.environ.get("TUYA_DEVICE_ID")
 
-# Google Sheets 관련 정보도 환경 변수에서 가져옵니다.
 GOOGLE_SHEET_NAME = os.environ.get("GOOGLE_SHEET_NAME")
 GOOGLE_CREDENTIALS_JSON_STR = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
 def log_to_sheet(result, details):
-    """Google Sheets에 로그를 기록하는 함수"""
     try:
+        # (로그 기록 함수는 이전과 동일)
         if not all([GOOGLE_SHEET_NAME, GOOGLE_CREDENTIALS_JSON_STR]):
-            print("[로깅 오류] Google Sheets 관련 환경 변수가 설정되지 않았습니다.")
+            print("[로깅 오류] Google Sheets 환경 변수가 설정되지 않았습니다.")
             return
 
         creds_json = json.loads(GOOGLE_CREDENTIALS_JSON_STR)
@@ -33,11 +34,8 @@ def log_to_sheet(result, details):
         client = gspread.authorize(creds)
         
         sheet = client.open(GOOGLE_SHEET_NAME).sheet1
-        
-        # 한국 시간(KST)으로 타임스탬프 기록
         kst = pytz.timezone('Asia/Seoul')
         timestamp = datetime.now(kst).strftime('%Y-%m-%d %H:%M:%S')
-        
         row = [timestamp, result, str(details)]
         sheet.append_row(row)
         print(f"[로깅 성공] '{result}' 이력을 Google Sheets에 기록했습니다.")
@@ -47,36 +45,42 @@ def log_to_sheet(result, details):
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def main_handler(path):
-    """링크가 클릭되면 실행되는 메인 함수"""
-    if not all([ACCESS_ID, ACCESS_KEY, API_ENDPOINT, DEVICE_ID]):
+    if not all([ACCESS_ID, ACCESS_KEY, DEVICE_ID]):
         msg = "서버 설정 오류: Tuya API 정보가 설정되지 않았습니다."
         log_to_sheet("서버 오류", msg)
         return f"<h1>오류</h1><p>{msg}</p>", 500
 
     try:
-        openapi = TuyaOpenAPI(API_ENDPOINT, ACCESS_ID, ACCESS_KEY)
-        response = openapi.connect()
+        # 1. TinyTuya 클라우드 객체 생성
+        cloud = tinytuya.Cloud(
+            apiRegion=REGION, 
+            apiKey=ACCESS_ID, 
+            apiSecret=ACCESS_KEY
+        )
         
-        if not response.get('success', False):
-            msg = f"클라우드 연결 실패: {response}"
-            log_to_sheet("실패", msg)
-            return f"<h1>클라우드 연결 실패</h1><p>에러: {response}</p>"
-
-        # '켜기(ON)' 명령입니다. 만약 '클릭' 방식으로 바꾸고 싶다면 아래 부분을 수정하세요.
-        # command = {'commands': [{'code': 'mode', 'value': 'click'}]}
-        command = {'commands': [{'code': 'switch', 'value': True}]}
-
-        api_path = f"/v1.0/iot-03/devices/{DEVICE_ID}/commands"
-        response = openapi.post(api_path, command)
+        # 2. '켜기' 명령 전송
+        # 'switch_led'는 보통의 스위치, 'switch'도 가능합니다.
+        # 기기에 따라 'switch_1', 'switch_2' 등일 수 있습니다.
+        # 가장 확실한 것은 'turn_on' 입니다.
+        commands = {
+            'commands': [
+                {'code': 'switch_led', 'value': True}, 
+                {'code': 'switch', 'value': True}
+            ]
+        }
         
-        if response.get('success', False):
+        # TinyTuya는 이 함수 하나로 명령을 보냅니다.
+        result = cloud.send_device_commands(DEVICE_ID, commands['commands'])
+
+        if result.get('success', False):
             msg = f"기기(ID: {DEVICE_ID})에 '켜기' 명령 전송"
-            log_to_sheet("성공", msg)
-            return f"<h1>요청 성공</h1><p>{msg}</p>"
+            log_to_sheet("성공", result)
+            return f"<h1>요청 성공</h1><p>{msg}</p><p>응답: {result}</p>"
         else:
-            msg = f"명령 전송 실패: {response}"
+            msg = f"명령 전송 실패: {result}"
             log_to_sheet("실패", msg)
-            return f"<h1>명령 전송 실패</h1><p>에러: {response}</p>"
+            return f"<h1>명령 전송 실패</h1><p>에러: {result}</p>"
+
     except Exception as e:
         msg = f"치명적 오류 발생: {e}"
         log_to_sheet("치명적 오류", msg)
