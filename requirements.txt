@@ -1,0 +1,5 @@
+flask
+tuya-connector
+gspread
+oauth2client
+pytz
