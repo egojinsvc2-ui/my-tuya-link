@@ -1,0 +1,5 @@
+flask
+tuya-iot-py-sdk
+gspread
+oauth2client
+pytz
