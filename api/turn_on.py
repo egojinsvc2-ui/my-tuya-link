@@ -13,9 +13,7 @@ app = Flask(__name__)
 # --- 환경 변수 ---
 ACCESS_ID = os.environ.get("TUYA_ACCESS_ID")
 ACCESS_KEY = os.environ.get("TUYA_ACCESS_KEY")
-# tinytuya는 API_ENDPOINT 대신 REGION을 사용합니다.
-# REGION 값: 'us' (미국), 'eu' (유럽), 'in' (인도), 'cn' (중국)
-REGION = os.environ.get("TUYA_REGION", "us") # 기본값 미국
+REGION = os.environ.get("TUYA_REGION", "us") 
 DEVICE_ID = os.environ.get("TUYA_DEVICE_ID")
 
 GOOGLE_SHEET_NAME = os.environ.get("GOOGLE_SHEET_NAME")
@@ -23,7 +21,6 @@ GOOGLE_CREDENTIALS_JSON_STR = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 
 def log_to_sheet(result, details):
     try:
-        # (로그 기록 함수는 이전과 동일)
         if not all([GOOGLE_SHEET_NAME, GOOGLE_CREDENTIALS_JSON_STR]):
             print("[로깅 오류] Google Sheets 환경 변수가 설정되지 않았습니다.")
             return
@@ -58,28 +55,30 @@ def main_handler(path):
             apiSecret=ACCESS_KEY
         )
         
-        # 2. '켜기' 명령 전송
-        # 'switch_led'는 보통의 스위치, 'switch'도 가능합니다.
-        # 기기에 따라 'switch_1', 'switch_2' 등일 수 있습니다.
-        # 가장 확실한 것은 'turn_on' 입니다.
+        # 2. '켜기' 명령 준비
         commands = {
             'commands': [
-                {'code': 'switch_led', 'value': True}, 
+                # 기기에 맞는 표준 명령어를 사용해 보세요.
+                # 'switch_led' 또는 'switch' 또는 'switch_1' 등
                 {'code': 'switch', 'value': True}
             ]
         }
         
-        # TinyTuya는 이 함수 하나로 명령을 보냅니다.
+        # 3. 명령 전송 (최신 함수 이름: device_control)
         result = cloud.device_control(DEVICE_ID, action="command", payload=commands)
 
-        if result and not result.get('Error'):
-            msg = f"기기(ID: {DEVICE_ID})에 '켜기' 명령 전송"
-            log_to_sheet("성공", result)
-            return f"<h1>요청 성공</h1><p>{msg}</p><p>응답: {result}</p>"
-        else:
+        # 4. 결과 확인
+        # tinytuya는 성공 시에도 응답이 비어있을 수 있고, 실패 시 'Error' 키를 포함할 수 있음
+        if result and result.get('Error'):
+            # 명백한 실패
             msg = f"명령 전송 실패: {result}"
             log_to_sheet("실패", msg)
             return f"<h1>명령 전송 실패</h1><p>에러: {result}</p>"
+        else:
+            # 성공 (또는 응답 없음 - 이것도 보통 성공임)
+            msg = f"기기(ID: {DEVICE_ID})에 '켜기' 명령을 보냈습니다."
+            log_to_sheet("성공", result if result else "응답 없음 (성공 간주)")
+            return f"<h1>요청 성공</h1><p>{msg}</p><p>Tuya 응답: {result}</p>"
 
     except Exception as e:
         msg = f"치명적 오류 발생: {e}"
